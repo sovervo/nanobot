@@ -18,6 +18,7 @@ Connect nanobot to your favorite chat platform. Want to build your own? See the 
 | **Microsoft Teams** | App ID + App Password + public HTTPS endpoint |
 | **Mochat** | Claw token (auto-setup available) |
 | **Signal** | signal-cli daemon + phone number |
+| **SimpleX Chat** | SimpleX Chat CLI WebSocket server |
 
 <details>
 <summary><b>Telegram</b> (Recommended)</summary>
@@ -773,5 +774,70 @@ nanobot gateway
 > [!TIP]
 > The channel automatically reconnects to the signal-cli daemon with exponential backoff if the connection drops.
 > Markdown in bot replies is automatically converted to Signal text styles (bold, italic, code, etc.).
+
+</details>
+
+<details>
+<summary><b>SimpleX Chat</b></summary>
+
+Uses the [SimpleX Chat bot API](https://github.com/simplex-chat/simplex-chat/tree/stable/bots). nanobot connects to a locally running SimpleX Chat CLI WebSocket server, receives `newChatItems` events, and replies with the CLI `/_send` command.
+
+**1. Install and prepare SimpleX Chat CLI**
+
+Install [`simplex-chat`](https://github.com/simplex-chat/simplex-chat/tree/stable/apps/simplex-chat) and create a bot profile and SimpleX address. The upstream bot guide recommends configuring the address to automatically accept incoming contact requests.
+
+Start the CLI WebSocket server on the same machine as nanobot. This is a long-running foreground process, so leave it running in a separate terminal, `tmux` session, or service manager:
+
+```bash
+# Terminal 1: keep the SimpleX CLI WebSocket server running
+simplex-chat -p 5225
+
+# Terminal 2: start nanobot separately
+nanobot gateway
+```
+
+For a long-lived deployment, run `simplex-chat -p 5225` under a process supervisor such as systemd rather than relying on an interactive terminal.
+
+**2. Configure**
+
+```json
+{
+  "channels": {
+    "simplex": {
+      "enabled": true,
+      "websocketUrl": "ws://localhost:5225",
+      "allowFrom": ["YOUR_SIMPLEX_CONTACT_ID"]
+    }
+  }
+}
+```
+
+> [!IMPORTANT]
+> The SimpleX CLI WebSocket API does not provide authentication. Keep the CLI bound to localhost and run nanobot on the same machine. If you must connect across a network, follow the upstream security guidance: put the WebSocket endpoint behind a TLS-enabled reverse proxy with HTTP basic authentication and restrict access with a firewall.
+
+**3. Optional group chats**
+
+Direct chats are enabled automatically. Group processing is opt-in and, by default, only responds when the bot is mentioned:
+
+```json
+{
+  "channels": {
+    "simplex": {
+      "enabled": true,
+      "websocketUrl": "ws://localhost:5225",
+      "allowFrom": ["YOUR_GROUP_MEMBER_ID"],
+      "groupEnabled": true,
+      "groupAllowFrom": ["YOUR_GROUP_ID"],
+      "groupRequireMention": true
+    }
+  }
+}
+```
+
+> - `allowFrom`: Direct-chat contact IDs and group member IDs allowed to use nanobot. Omit it to use pairing-only mode for direct chats.
+> - `groupAllowFrom`: Explicit group IDs nanobot may process. Use `["*"]` to allow all groups.
+> - `groupRequireMention`: Require the SimpleX `userMention` marker in group messages. Defaults to `true`.
+> - `commandTimeoutSeconds`: Maximum time to wait for a correlated CLI command response. Defaults to `30`.
+> - Text replies and outbound file attachments are supported. Unsupported and future SimpleX event types are ignored safely.
 
 </details>
